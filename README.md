@@ -1,1 +1,1 @@
-# Fitting-Sinusoidal-Curves-to-Diurnal-Variation-
+# This repository contains script to do preprocessing, analysis and visualizations in regards to the exam in Advanced Cognitive Neuroscience on the 1st Semester of the Cognitive Science master at Aarhus Unviersity.
