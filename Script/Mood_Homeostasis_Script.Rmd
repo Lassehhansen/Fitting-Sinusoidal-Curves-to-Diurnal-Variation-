@@ -1,0 +1,243 @@
+---
+title: "Mood_Homeostasis"
+output: html_document
+date: '2022-12-10'
+---
+
+### Installing Packages 
+
+
+```{r}
+install.packages("pacman")
+pacman::p_load(
+               lmerTest,
+               tidyverse,
+               ggpubr,
+               sjPlot)
+```
+
+### loading data
+
+```{r}
+library(tidyverse)
+
+#Get FaceStroopData
+datadir<-"BodyFeelingExp_data"
+
+
+#Find files
+files<-list.files(datadir,pattern='^BodyFeelingExp_.+?csv',full.names=TRUE)
+
+#Prepare an empty data frame for the data (also removes old version)
+dataBFE<-data.frame()
+
+#How many datasets were there
+n_datasets_raw<-length(files)
+#Prepare a variable to monitor how many datasets we keep
+n_datasets<-0
+#Prepare a variable to monitor how many points we originally had
+n_datapoints_raw<-0
+
+#Loop to go through all files in the list
+for(iii in 1:n_datasets_raw){
+  
+  #remove old loaded file to not risk importing it multiple times
+  if(exists('data_temp')) rm(data_temp)
+  
+  #Load data
+  data_temp<-read.csv(files[iii])
+  if(dim(data_temp)[2]==31){
+    data_temp[1,6]<-data_temp[dim(data_temp)[1],6]
+    data_temp<-data_temp[1,c(6,8:27)]
+        if(length(colnames(dataBFE))==0){
+          dataBFE=data_temp
+          rm(data_temp)
+          #counter to monitor included datasets
+          n_datasets<-n_datasets+1
+        }
+        #Bind loaded data with actual data
+        else {dataBFE<-rbind(dataBFE,data_temp)
+          rm(data_temp)
+          #counter to monitor included datasets
+          n_datasets<-n_datasets+1
+        }
+    }
+}
+
+#A variable to monitor how many points we keep
+n_datapoints<-length(dataBFE[,1])
+
+```
+
+
+### Changing hour variable 
+
+```{r}
+#Make a variable which has hour and minutes of the day as decimal variable
+dataBFE$hour2<-dataBFE$hour+(dataBFE$minute)/60
+```
+
+### Getting number of participants
+```{r}
+uni <- dataBFE[!duplicated(dataBFE$id),]
+uni
+
+#Collapse id's
+dataBFE[dataBFE == " Woo55"] <- "woo55"
+dataBFE[dataBFE == "Woo55"] <- "woo55"
+dataBFE[dataBFE == "dig05"] <- "dlg05"
+dataBFE[dataBFE == "hej123"] <- "hej12"
+dataBFE[dataBFE == "www111"] <- "www11"
+dataBFE[dataBFE == "www12"] <- "www11"
+dataBFE[dataBFE == "www123"] <- "www11"
+dataBFE[dataBFE == "Qwe12"] <- "qwe12"
+dataBFE[dataBFE == "POP33"] <- "pop33"
+dataBFE[dataBFE == "ESG44"] <- "esg44"
+
+#Check the remaining id's
+uni <- dataBFE[!duplicated(dataBFE$id),]
+uni
+
+#Exclude POP33 idx 252 and ESG44 idx 65 
+dataBFE <- dataBFE[-c(65, 252), ]
+
+uni <- dataBFE[!duplicated(dataBFE$id),]
+```
+
+
+### Visualzie one cycle per 24 hour
+
+```{r}
+#cycle frequency (in this case per hour) - one cycle per 24 hours
+cf=1/24
+
+#Make sine and cosine waves for each time point present in the data
+
+dataBFE$`Sine Wave 24 hour`<-sin(2*pi*cf*dataBFE$hour2)
+dataBFE$`Cosine Wave 24 hour`<-cos(2*pi*cf*dataBFE$hour2)
+
+plot_dat = dataBFE %>% 
+           select(`Sine Wave 24 hour`, `Cosine Wave 24 hour`, hour2) %>% 
+           pivot_longer(1:2) %>% rename("Wave type" = "name")
+
+# Plot the predictors for each data point in the data
+plot_24hour <- ggplot(plot_dat, aes(x=hour2,y=value, colour = `Wave type`))+
+      geom_point()+
+      scale_colour_manual(values = c("#bc6c25", "#669bbc")) +
+      ylab('Amplitude') +
+      xlab("Hour of the day") + 
+  theme_light()
+plot_24hour
+```
+
+
+#### Visualize one cycle per 12 hour 
+
+```{r}
+#cycle frequency (in this case per hour) - one cycle per 12 hours
+cf=1/12
+
+#Make sine and cosine waves for each time point present in the data
+
+dataBFE$`Sine Wave 12 hour`<-sin(2*pi*cf*dataBFE$hour2)
+dataBFE$`Cosine Wave 12 hour`<-cos(2*pi*cf*dataBFE$hour2)
+
+plot_dat = dataBFE %>% 
+           select(`Sine Wave 12 hour`, `Cosine Wave 12 hour`, hour2) %>% 
+           pivot_longer(1:2) %>% rename("Wave type" = "name")
+
+# Plot the predictors for each data point in the data
+plot12_hour <- ggplot(plot_dat, aes(x=hour2,y=value, colour = `Wave type`))+
+      geom_point()+
+      scale_colour_manual(values = c("#bc6c25", "#669bbc")) +
+      ylab('Amplitude') +
+      xlab("Hour of the day") +
+      theme_light()
+
+plot12_hour
+```
+
+### Putting plot together
+
+```{r}
+ggpubr::ggarrange(plot12_hour, plot_24hour, 
+                  labels = c("A", "B"), 
+                  common.legend = T,
+                  legend = "top")
+```
+
+### Modelling mood with two different mood waves
+
+#### Mood
+
+#### Scaling mood 
+
+```{r}
+dataBFE = dataBFE %>% 
+          mutate(std_mood = scale(mood)[,1])
+```
+
+
+#### Building models
+
+```{r}
+model_mood_12_hour <- lmer(std_mood ~ `Sine Wave 12 hour`+`Cosine Wave 12 hour` + (1 | id),
+                         data = dataBFE)
+
+model_mood_24_hour <- lmer(std_mood ~ `Sine Wave 24 hour`+`Cosine Wave 24 hour` + (1 | id),
+                         data = dataBFE)
+```
+
+### Visualizing model fit
+
+```{r}
+m_12 <- summary(model_mood_12_hour)
+m_24 <- summary(model_mood_24_hour)
+
+dataBFE = dataBFE %>% 
+          mutate("12 hour cycle model" = m_12$coefficients[2,1]*`Sine Wave 12 hour` +
+                          m_12$coefficients[3,1]*`Cosine Wave 12 hour`,
+                 "24 hour cycle model" = m_24$coefficients[2,1]*`Sine Wave 24 hour` +
+                          m_24$coefficients[3,1]*`Cosine Wave 24 hour`)
+
+plot_dat2 = dataBFE %>% 
+           select(`12 hour cycle model`, `24 hour cycle model`, std_mood, hour2) %>%
+           rename("Standardized Mood" = "std_mood") %>% 
+           pivot_longer(1:3) %>% 
+           rename("Mood value" = "name")
+
+ggplot(plot_dat2, aes(x = hour2, y = value, colour = `Mood value`))+
+      geom_smooth(aes(x = hour2,
+                      y = value,
+                      colour = `Mood value`)) +
+      labs(x = 'Time of day (hours)', y='Standardized Mood') +
+      scale_colour_manual(values = c("#588157", "#bde0fe", "#d4a373")) +
+      theme_light()
+```
+
+```{r}
+model_comp <- anova(model_mood_12_hour, model_mood_24_hour)
+model_comp2  = round(model_comp, digits = 2)
+knitr::kable(model_comp2)
+```
+
+
+```{r}
+sjPlot::plot_models(model_mood_12_hour, model_mood_24_hour, 
+                    m.labels = c("12 hour cycle", "24 hour cycle"),
+                    show.p = T,
+                    p.shape = T)
+```
+
+
+```{r}
+summary(model_mood_12_hour)
+summary(model_mood_24_hour)
+```
+
+```{r}
+plot(model_mood_12_hour)
+plot(model_mood_24_hour)
+```
+
+
